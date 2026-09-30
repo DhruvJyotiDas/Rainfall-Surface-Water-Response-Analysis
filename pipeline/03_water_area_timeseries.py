@@ -221,23 +221,42 @@ def extract_water_area_for_year(ee, year, fc, threshold_img, slope_mask, aoi_geo
         empty.to_csv(year_path, index=False)
         return empty
 
-    def process_image(img):
-        date_ms = img.get("system:time_start")
-        linear = ee.Image(10).pow(img.divide(10))
+    # BUG CAUGHT (see CLAUDE.md): treating each raw image independently means
+    # a tank sitting near an S1 frame/swath boundary gets a spurious area=0
+    # whenever the pass that day happens to be split across two adjacent
+    # frames and the tank falls just outside one of them - reduceRegions
+    # correctly excludes the masked (no-data) pixels, but for a tank fully
+    # outside that frame's footprint the sum is legitimately 0, which reads
+    # as "dry" when it's really "not observed by this particular frame".
+    # 11/292 distinct dates (across all years) had this same-day-duplicate
+    # pattern. Fix: mosaic same-calendar-day images into ONE composite per
+    # date before classifying - mosaic() takes the first valid (unmasked)
+    # pixel per location, so a tank only covered by one of the two frames
+    # now gets that frame's real value instead of a false zero.
+    timestamps = retry_with_backoff(lambda: s1.aggregate_array("system:time_start").getInfo(), label=f"{year} timestamps")
+    distinct_dates = sorted({pd.Timestamp(t, unit="ms").strftime("%Y-%m-%d") for t in timestamps})
+    if len(distinct_dates) < n:
+        print(f"[{year}] {n} images collapse to {len(distinct_dates)} distinct dates (same-day frame duplicates found, mosaicking)")
+
+    def process_date(date_str):
+        date_str = ee.String(date_str)
+        start = ee.Date(date_str)
+        end = start.advance(1, "day")
+        day_imgs = s1.filterDate(start, end)
+        mosaic = day_imgs.mosaic()
+        linear = ee.Image(10).pow(mosaic.divide(10))
         smoothed_db = linear.focalMedian(radius=s1cfg["speckle_filter_radius_m"], units="meters").log10().multiply(10)
         water = smoothed_db.lt(threshold_img).And(slope_mask)
         reduced = water.reduceRegions(collection=fc, reducer=ee.Reducer.sum(), scale=20, tileScale=4)
-        return reduced.map(lambda f: f.set("date_ms", date_ms))
+        return reduced.map(lambda f: f.set("date_ms", start.millis()).set("n_frames_mosaicked", day_imgs.size()))
 
-    imgs_list = s1.toList(n)
     all_rows = []
-    n_batches = (n + AGGREGATION_BATCH_SIZE - 1) // AGGREGATION_BATCH_SIZE
+    n_batches = (len(distinct_dates) + AGGREGATION_BATCH_SIZE - 1) // AGGREGATION_BATCH_SIZE
     for b in range(n_batches):
-        start_i = b * AGGREGATION_BATCH_SIZE
-        batch_size = min(AGGREGATION_BATCH_SIZE, n - start_i)
+        batch = distinct_dates[b * AGGREGATION_BATCH_SIZE : (b + 1) * AGGREGATION_BATCH_SIZE]
 
-        def fetch_batch(start_i=start_i, batch_size=batch_size):
-            subset = ee.List(imgs_list.slice(start_i, start_i + batch_size)).map(lambda i: process_image(ee.Image(i)))
+        def fetch_batch(batch=batch):
+            subset = ee.List(batch).map(process_date)
             return ee.FeatureCollection(subset).flatten().getInfo()
 
         result = retry_with_backoff(fetch_batch, label=f"{year} batch {b + 1}/{n_batches}", max_retries=5, base_delay=8.0)
@@ -248,7 +267,7 @@ def extract_water_area_for_year(ee, year, fc, threshold_img, slope_mask, aoi_geo
 
     df = pd.DataFrame(all_rows)
     df.to_csv(year_path, index=False)
-    print(f"[cache] wrote {year_path} ({len(df)} rows, {n} images)")
+    print(f"[cache] wrote {year_path} ({len(df)} rows, {len(distinct_dates)} distinct dates from {n} images)")
     return df
 
 

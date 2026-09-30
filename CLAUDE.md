@@ -125,10 +125,38 @@ NOT a bug. Last 2 months should be flagged provisional in any output
    Threshold distribution is sane (median -17.3dB, within the -14..-19 sweep
    range from the spec).
 
-2. **Per-image water-area extraction, chunked** (IN PROGRESS as of this
-   writing — check `cache/phase1_extraction.log` and whether
-   `cache/s1_water_area_raw_all_years.csv` exists to see if it finished).
-   IMPORTANT PERFORMANCE FINDING: a naive one-`reduceRegions()`-call-per-image
+2. **Per-image water-area extraction, chunked** (first full run COMPLETED:
+   all 10 years, 303 images, 142,410 tank-image rows, zero errors/retries
+   needed — see `cache/phase1_extraction.log`. Then a real bug was found in
+   that output, see below, and the whole extraction is being redone with a
+   fix — check `cache/phase1_run3_fixed.log` and whether
+   `cache/s1_water_area_raw_all_years.csv` exists with a fresh timestamp to
+   see if the corrected run finished).
+
+   **BUG FOUND AND FIXED (frame-boundary false zeros)**: spot-checking
+   individual tank series after the first full run, `tank_0944` showed
+   physically backwards behavior (high area Jan-Feb, near-zero during the
+   Jun-Oct monsoon) alternating with a same-day duplicate reading of exactly
+   0.0. Root cause: 11 of 292 distinct S1 dates (across all years) have TWO
+   S1 frames from the same pass (adjacent swaths, ~25s apart) covering the
+   AOI; treating each frame as an independent image meant a tank sitting
+   just outside one frame's footprint got a spurious area=0 from that frame
+   (correctly masked/no-data pixels, but the WHOLE tank polygon outside that
+   footprint), which reads indistinguishably from "genuinely dry" in the
+   output. Fix in `extract_water_area_for_year()`: group images by calendar
+   date, `.mosaic()` same-day frames into one composite BEFORE classification
+   (mosaic takes the first valid/unmasked pixel per location, so a
+   boundary tank now gets whichever frame actually covers it). This is
+   NOT a GPU/compute issue — it's a data-modeling bug (independent-image
+   assumption breaking near frame edges), caught only by actually looking at
+   individual tank output before trusting it. All affected caches
+   (`s1_water_area_<year>.csv`, `_raw_all_years`, `_monthly`,
+   `s1_s2_calibration_pairs`) were deleted and the pipeline re-run from
+   scratch with the fix. Only ~3.8% of dates were affected, but the fix
+   changes the "unit of extraction" from image to distinct-date, so
+   everything downstream needed a clean rebuild rather than a patch.
+
+   IMPORTANT PERFORMANCE FINDING (still valid): a naive one-`reduceRegions()`-call-per-image
    loop took ~30s/image (303 images -> ~2.5 hours) and is NOT compute-bound —
    almost all of that time is GEE server-side work plus one Python<->GEE round
    trip per image. A GPU or more local CPU does NOT help this bottleneck (the
@@ -193,6 +221,16 @@ section)
    GEE quota wall discovered by testing, not a bug in our code, but changes
    how the extraction script is structured (batch size 10, hardcoded with
    justification).
+6. **Frame-boundary false zeros**: see Phase 1 section above — treating each
+   raw S1 image independently gave a spurious area=0 for tanks sitting just
+   outside one of two same-day adjacent frames (11/292 distinct dates
+   affected). Caught by spot-checking an individual tank's series (physically
+   backwards seasonal pattern) BEFORE trusting the extraction, not by an
+   automated test - a reminder that summary stats (e.g. "median=0 across all
+   observations") can look plausible in aggregate while hiding a real bug in
+   individual series. Fixed by mosaicking same-calendar-day images before
+   classification. Whole Phase 1 output was regenerated from scratch after
+   this fix, not patched in place.
 
 ## Open decisions / things NOT yet done (don't assume these are finished)
 - non_rain_inflow flag is only half-built (canal-proximity done; the
