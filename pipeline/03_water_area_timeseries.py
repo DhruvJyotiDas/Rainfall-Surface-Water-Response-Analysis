@@ -287,7 +287,46 @@ def main() -> int:
     full_path = cache_path("s1_water_area_raw_all_years", "csv")
     full.to_csv(full_path, index=False)
     print(f"Wrote combined raw series: {full_path} ({len(full)} tank-image rows)")
+
+    monthly = aggregate_monthly(full, cfg)
+    monthly_path = cache_path("s1_water_area_monthly", "csv")
+    monthly.to_csv(monthly_path, index=False)
+    print(f"Wrote monthly aggregate: {monthly_path} ({len(monthly)} tank-month rows)")
+    print(f"n_obs distribution:\n{monthly['n_obs'].value_counts().sort_index().to_string()}")
+    n_zero_dropped = monthly.attrs.get("n_zero_obs_months_dropped", 0)
+    print(f"Months with n_obs=0 dropped (never interpolated): {n_zero_dropped}")
+
     return 0
+
+
+def aggregate_monthly(raw: pd.DataFrame, cfg: dict, scale_m: int = 20) -> pd.DataFrame:
+    """Monthly aggregate = median area_ha across images in the month, with
+    n_obs recorded. Months with n_obs=0 simply don't appear in the output -
+    that IS the "drop, don't interpolate" behavior; there is nothing to
+    silently fill in. Pixel count -> area_ha uses a constant scale^2
+    multiplier (not ee.Image.pixelArea()) - a deliberate speed tradeoff made
+    during extraction, negligible distortion at 14N for this AOI's size, but
+    recorded here as an assumption for the README rather than left implicit.
+    """
+    df = raw.copy()
+    df["area_ha"] = df["sum"] * (scale_m**2) / 10000.0
+    df["date"] = pd.to_datetime(df["date_ms"], unit="ms")
+    df["year_month"] = df["date"].dt.to_period("M").astype(str)
+
+    monthly = (
+        df.groupby(["tank_id", "year_month"])
+        .agg(area_ha_median=("area_ha", "median"), n_obs=("area_ha", "count"))
+        .reset_index()
+    )
+    # every group here has n_obs >= 1 by construction (groupby only sees rows
+    # that exist); "dropped n_obs=0 months" means tank-months with NO S1
+    # image at all in that period, which never enter this dataframe to begin
+    # with - report that count for transparency rather than pretend it's zero.
+    all_tanks = df["tank_id"].unique()
+    all_months = sorted(df["year_month"].unique())
+    full_grid_size = len(all_tanks) * len(all_months)
+    monthly.attrs["n_zero_obs_months_dropped"] = full_grid_size - len(monthly)
+    return monthly
 
 
 if __name__ == "__main__":
