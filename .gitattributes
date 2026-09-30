@@ -1,0 +1,3 @@
+# Compiled bundles contain upstream GLSL strings whose whitespace is intentional.
+docs/assets/*.js linguist-generated=true -whitespace
+docs/assets/*.css linguist-generated=true -whitespace

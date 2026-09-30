@@ -1,5 +1,11 @@
 # Rainfall–Surface Water Response Analysis
 
+**Interactive frontend:** see [FRONTEND.md](FRONTEND.md) for the new React/Three.js
+observatory, local run commands, demo-data provenance, browser tests, and static
+hosting instructions. The narrative and findings below describe the original
+research pipeline; frontend monthly curves and rainfall scenarios are explicitly
+synthetic and do not replace that pipeline's scientific outputs.
+
 GEOIMPATHON 1.0, Problem 2.4. **Built under a hard 1-hour deadline** (see
 Timeline/Cuts section) — this is a working, honestly-reduced pipeline, not
 the full spec. Every number below comes from the actual pipeline run in

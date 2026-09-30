@@ -8,6 +8,6 @@ export default defineConfig({
     outDir: 'docs',
     // Retain the original pipeline export, vendored tools, and research artifacts.
     emptyOutDir: false,
-    rollupOptions: { output: { manualChunks: { three: ['three'] } } },
+    rollupOptions: { output: { manualChunks: (id: string) => id.includes('node_modules/three/') ? 'three' : undefined } },
   },
 });

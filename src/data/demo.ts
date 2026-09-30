@@ -45,7 +45,7 @@ export const tanks: Tank[] = seeds.map((seed, index) => {
     const yearFactor = .82 + Math.sin(Math.floor(month / 12) * 2.1) * .25;
     const rain = Math.max(0, climate[month % 12] * yearFactor * (.75 + rnd() * .65));
     const inflow = responseFraction(t, rain);
-    const retention = month % 12 >= 10 || month % 12 <= 1 ? Math.exp(-(seed.recession ?? .35)) : .52;
+    const retention = month % 12 >= 10 || month % 12 <= 1 ? Math.exp(-Math.max(.05, seed.recession ?? .35)) : .52;
     previous = clamp(Math.max(inflow, previous * retention) * (.94 + rnd() * .06));
     t.series.push({ month: months[month], rain: +rain.toFixed(1), area: +(maxArea * previous).toFixed(3) });
   }
