@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">From rainfall to tank response</title>
+  <desc id="desc">Conceptual illustration showing a rain cloud over a catchment, runoff flowing into a small tank, and a satellite observing water area. No numerical results are shown.</desc>
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#102b45"/><stop offset="1" stop-color="#1c4d67"/></linearGradient>
+    <linearGradient id="water" x2="0" y2="1"><stop stop-color="#3ec5ce"/><stop offset="1" stop-color="#17688a"/></linearGradient>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#8ce1d3"/></marker>
+  </defs>
+  <rect width="1200" height="360" rx="18" fill="url(#sky)"/>
+  <circle cx="1030" cy="74" r="43" fill="#ffd68a" opacity=".9"/>
+  <path d="M0 267 Q125 245 215 201 Q299 155 386 212 Q445 240 518 245 Q615 263 698 221 Q766 182 847 236 Q940 289 1200 247 L1200 360 H0Z" fill="#3e786a"/>
+  <path d="M0 294 Q160 256 247 250 Q363 234 436 278 Q520 304 604 282 Q722 240 813 269 Q966 315 1200 274 V360 H0Z" fill="#245b5a"/>
+  <path d="M464 278 C569 281 656 265 733 281 C814 296 844 319 913 320 C965 319 1005 298 1077 291 L1108 360 H395Z" fill="url(#water)" stroke="#b1ecdf" stroke-width="4"/>
+  <path d="M374 248 C451 246 468 263 510 275" fill="none" stroke="#8ce1d3" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <g fill="#e8f6f3"><circle cx="142" cy="104" r="39"/><circle cx="182" cy="85" r="49"/><circle cx="227" cy="110" r="36"/><rect x="137" y="105" width="102" height="38" rx="18"/></g>
+  <g stroke="#8ce1d3" stroke-width="5" stroke-linecap="round"><path d="M143 164 l-8 24"/><path d="M185 163 l-8 24"/><path d="M225 164 l-8 24"/><path d="M156 209 l-8 24"/><path d="M207 208 l-8 24"/></g>
+  <g transform="translate(831 67) rotate(-18)"><rect x="-21" y="-15" width="42" height="30" rx="5" fill="#f6d287"/><rect x="-70" y="-12" width="42" height="24" fill="#69b5c5" stroke="#c9eeea" stroke-width="2"/><rect x="28" y="-12" width="42" height="24" fill="#69b5c5" stroke="#c9eeea" stroke-width="2"/><path d="M0 15 29 75" stroke="#b1ecdf" stroke-width="2" stroke-dasharray="5 6"/></g>
+  <g font-family="system-ui,Segoe UI,sans-serif" fill="#f4fbf9"><text x="58" y="46" font-size="28" font-weight="700">RAINFALL → RUNOFF → VISIBLE WATER</text><text x="59" y="76" font-size="15" fill="#b9ddd9">How the study connects weather to tank area</text><text x="68" y="275" font-size="16">Rainfall</text><text x="318" y="215" font-size="16">Catchment</text><text x="711" y="314" font-size="16">Tank area</text><text x="875" y="122" font-size="16">Satellite observation</text></g>
+  <rect x="994" y="322" width="174" height="25" rx="12" fill="#eaf9f4"/><text x="1081" y="339" text-anchor="middle" font-family="system-ui,Segoe UI,sans-serif" font-size="12" font-weight="700" fill="#215960">CONCEPTUAL · NOT DATA</text>
+</svg>
