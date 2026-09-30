@@ -315,6 +315,12 @@ def main() -> int:
     n_zero_dropped = monthly.attrs.get("n_zero_obs_months_dropped", 0)
     print(f"Months with n_obs=0 dropped (never interpolated): {n_zero_dropped}")
 
+    import os
+
+    if os.environ.get("SKIP_S2_CALIBRATION") == "1":
+        print("=== S1-vs-S2 calibration SKIPPED (SKIP_S2_CALIBRATION=1, time-boxed) ===")
+        return 0
+
     print("=== S1-vs-S2 calibration ===")
     pairs = run_s1_s2_calibration(ee, gdf_with_thresh, aoi_geom, full, cfg)
     validation_table = build_validation_table(pairs, full, gdf_with_thresh, cfg)
