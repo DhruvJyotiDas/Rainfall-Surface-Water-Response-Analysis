@@ -4,19 +4,174 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rainfall–Surface Water Response Analysis</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1.5rem; color: #1a1a1a; line-height: 1.5; }
-  h1 { font-size: 1.4rem; }
-  .status { display: inline-block; padding: 0.25rem 0.6rem; border-radius: 4px; background: #fef3c7; color: #92400e; font-size: 0.85rem; font-weight: 600; }
+  :root {
+    --resilient: #2b8a3e; --tracking: #1c7ed6; --fragile: #e8590c; --nonresp: #862e2e; --insuff: #868e96;
+    --bg: #f8f9fa; --panel: #ffffff; --text: #212529; --border: #dee2e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #16181d; --panel: #1e2126; --text: #e9ecef; --border: #343a40; }
+  }
+  :root[data-theme="dark"] { --bg: #16181d; --panel: #1e2126; --text: #e9ecef; --border: #343a40; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { margin: 0; font-size: 1.15rem; }
+  header p { margin: 0.2rem 0 0; font-size: 0.8rem; opacity: 0.75; }
+  .layout { display: flex; flex-wrap: wrap; gap: 0; height: calc(100vh - 64px); min-height: 500px; }
+  #map { flex: 1 1 55%; min-width: 280px; min-height: 400px; }
+  .side { flex: 1 1 40%; min-width: 300px; overflow-y: auto; padding: 0.8rem; background: var(--panel); border-left: 1px solid var(--border); }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; color: #fff; }
+  .b-resilient { background: var(--resilient); } .b-rainfall_tracking { background: var(--tracking); }
+  .b-threshold_limited_fragile { background: var(--fragile); } .b-non_responsive { background: var(--nonresp); }
+  .b-insufficient_data { background: var(--insuff); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.5rem; }
+  th, td { padding: 0.35rem 0.4rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { position: sticky; top: 0; background: var(--panel); cursor: pointer; }
+  tr:hover { background: rgba(128,128,128,0.08); cursor: pointer; }
+  #detail { border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem; margin-bottom: 0.7rem; font-size: 0.85rem; }
+  #detail h3 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+  .flag { color: #e8590c; font-size: 0.75rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; font-size: 0.8rem; }
+  select, input[type=text] { padding: 0.25rem; font-size: 0.8rem; }
+  #limits { font-size: 0.72rem; opacity: 0.75; margin-top: 0.8rem; line-height: 1.4; }
+  a.dl { font-size: 0.78rem; }
+  canvas { max-width: 100%; }
 </style>
 </head>
 <body>
-  <h1>Rainfall&ndash;Surface Water Response Analysis</h1>
-  <p><span class="status">Deployment skeleton &mdash; pipeline not yet run</span></p>
-  <p>GEOIMPATHON 1.0, Problem 2.4. This page is a placeholder confirming GitHub Pages
-     deployment works. The interactive tank map, vulnerability table, and scenario
-     slider will replace this once Phase 5 (dashboard) is complete.</p>
-  <p>Currently blocked in Phase 0 on Earth Engine authentication &mdash; no live data
-     has been fetched, so nothing here is a claim about actual tanks or rainfall.</p>
+<header>
+  <h1>Rainfall&ndash;Surface Water Response Analysis <span style="font-weight:400;font-size:0.8rem;opacity:0.7">&middot; Anantapur, Rayalaseema (screening tool, not a verdict)</span></h1>
+  <p id="hdr-sub">Loading pipeline output&hellip;</p>
+</header>
+<div class="layout">
+  <div id="map"></div>
+  <div class="side">
+    <div id="detail"><em>Click a tank on the map or in the table below.</em></div>
+    <div class="controls">
+      <select id="filterClass"><option value="">All classes</option></select>
+      <input type="text" id="search" placeholder="search tank id...">
+      <a class="dl" id="csvLink" href="#" download="tank_vulnerability_ranking.csv">Download CSV</a>
+    </div>
+    <table id="rankTable">
+      <thead><tr><th data-k="id">Tank</th><th data-k="area_ha">ha</th><th data-k="classification">Class</th><th data-k="fill_frequency">Fill freq</th><th data-k="threshold_mm">Thresh mm</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="limits">
+      <strong>Limitations (time-boxed build):</strong> rainfall anomaly is a z-score
+      vs. 2017-2025 own-pixel climatology, not true 1981-2020 gamma-fit SPI.
+      No bootstrap CIs; prewhitening is a lightweight lag-1 approximation, not
+      fitted AR(1). Threshold/hinge model uses monthly (not daily) granularity.
+      p-values are NOT corrected for CHIRPS pixel pseudo-replication (116
+      pixels shared by 470 tanks). S1-vs-S2 calibration and GWW/JRC external
+      validation were cut for time. No in-situ gauge data exists for any tank.
+      CHIRPS is ~5km resolution; small tanks share pixels. S1 sensitive to
+      wind roughening and aquatic vegetation. See README for full details.
+    </div>
+  </div>
+</div>
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script>
+(async function () {
+  const CLASS_COLORS = {
+    resilient: '#2b8a3e', rainfall_tracking: '#1c7ed6', threshold_limited_fragile: '#e8590c',
+    non_responsive: '#862e2e', insufficient_data: '#868e96'
+  };
+  let data = { tanks: [], monthly: {} };
+  try {
+    const res = await fetch('data/tanks.json');
+    data = await res.json();
+  } catch (e) {
+    document.getElementById('hdr-sub').textContent = 'Failed to load data/tanks.json - ' + e;
+    return;
+  }
+  const tanks = data.tanks;
+  document.getElementById('hdr-sub').textContent =
+    tanks.length + ' candidate tanks | 2017-2026 Sentinel-1/CHIRPS | last built ' + new Date().toISOString().slice(0,10);
+
+  const map = L.map('map').setView([14.35, 77.5], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 17
+  }).addTo(map);
+
+  const markers = {};
+  tanks.forEach(t => {
+    const color = CLASS_COLORS[t.classification] || '#868e96';
+    let layer;
+    if (t.coords && t.coords.length > 2) {
+      layer = L.polygon(t.coords.map(c => [c[1], c[0]]), { color, weight: 1, fillOpacity: 0.55 });
+    } else {
+      layer = L.circleMarker([t.lat, t.lon], { radius: 5, color, fillOpacity: 0.7 });
+    }
+    layer.addTo(map);
+    layer.on('click', () => showDetail(t.id));
+    markers[t.id] = layer;
+  });
+
+  const classSel = document.getElementById('filterClass');
+  [...new Set(tanks.map(t => t.classification))].sort().forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c; classSel.appendChild(o);
+  });
+
+  let chart = null;
+  function showDetail(id) {
+    const t = tanks.find(x => x.id === id);
+    if (!t) return;
+    const flags = [];
+    if (t.regulated_likely) flags.push('regulated_likely (&gt;100ha)');
+    if (t.slope_outlier) flags.push('slope_outlier');
+    if (t.near_osm_canal) flags.push('near_osm_canal (non-rain-inflow candidate)');
+    if (t.low_confidence) flags.push('low_confidence (&lt;5 seasons)');
+    document.getElementById('detail').innerHTML = `
+      <h3>${t.id} <span class="badge b-${t.classification}">${t.classification}</span></h3>
+      area: ${t.area_ha} ha &middot; fill_frequency: ${t.fill_frequency ?? 'n/a'} &middot;
+      recession k: ${t.recession_k ?? 'n/a'}/mo &middot; lag: ${t.peak_lag_months ?? 'n/a'}mo (r=${t.peak_lag_r ?? 'n/a'}) &middot;
+      threshold: ${t.threshold_mm ?? 'n/a'} mm &middot; n_seasons=${t.n_seasons ?? 'n/a'} &middot;
+      basin cascade: ${t.n_other_tanks_in_basin ?? 'n/a'} other tanks
+      ${flags.length ? '<div class="flag">Flags: ' + flags.join(', ') + '</div>' : ''}
+      <canvas id="chart" height="140"></canvas>`;
+    const series = data.monthly[t.id] || [];
+    const ctx = document.getElementById('chart');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      data: {
+        labels: series.map(s => s.m),
+        datasets: [
+          { type: 'bar', label: 'rain (mm)', data: series.map(s => s.rain_mm), yAxisID: 'y1', backgroundColor: 'rgba(28,126,214,0.35)' },
+          { type: 'line', label: 'area (ha)', data: series.map(s => s.area_ha), yAxisID: 'y0', borderColor: '#2b8a3e', tension: 0.2, pointRadius: 1 }
+        ]
+      },
+      options: {
+        responsive: true, interaction: { mode: 'index', intersect: false },
+        scales: { y0: { position: 'left', title: { display: true, text: 'area ha' } }, y1: { position: 'right', title: { display: true, text: 'rain mm' }, grid: { drawOnChartArea: false } } }
+      }
+    });
+    if (markers[id] && markers[id].getBounds) map.fitBounds(markers[id].getBounds(), { maxZoom: 15 });
+    else if (markers[id]) map.setView(markers[id].getLatLng(), 15);
+  }
+
+  function renderTable() {
+    const cls = classSel.value;
+    const q = document.getElementById('search').value.toLowerCase();
+    const rows = tanks.filter(t => (!cls || t.classification === cls) && t.id.toLowerCase().includes(q))
+      .sort((a, b) => (b.fill_frequency ?? -1) - (a.fill_frequency ?? -1));
+    const tbody = document.querySelector('#rankTable tbody');
+    tbody.innerHTML = rows.map(t => `<tr data-id="${t.id}"><td>${t.id}</td><td>${t.area_ha}</td>
+      <td><span class="badge b-${t.classification}">${t.classification.slice(0,10)}</span></td>
+      <td>${t.fill_frequency ?? '-'}</td><td>${t.threshold_mm ?? '-'}</td></tr>`).join('');
+    tbody.querySelectorAll('tr').forEach(tr => tr.addEventListener('click', () => showDetail(tr.dataset.id)));
+
+    const header = ['tank_id','area_ha','classification','fill_frequency','recession_k','threshold_mm','n_seasons','regulated_likely','slope_outlier','near_osm_canal'];
+    const csv = [header.join(',')].concat(tanks.map(t => header.map(h => t[h]).join(','))).join('\n');
+    document.getElementById('csvLink').href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  }
+  classSel.addEventListener('change', renderTable);
+  document.getElementById('search').addEventListener('input', renderTable);
+  renderTable();
+  if (tanks.length) showDetail(tanks.slice().sort((a,b)=>(b.area_ha)-(a.area_ha))[0].id);
+})();
+</script>
 </body>
 </html>
