@@ -4,6 +4,9 @@
 # It requires Earth Engine access (JRC + Dynamic World) to validate >=300 candidate
 # tanks in-window. See CHECKPOINT 0 in README/status log before treating this as final.
 
+earth_engine:
+  project: "rainfall-tank-analysis"   # registered GCP project, EE API enabled + registered
+
 aoi:
   name: "rayalaseema_anantapur_draft"
   description: >
