@@ -1,8 +1,7 @@
 # GEOIMPATHON 1.0 - Problem 2.4: Rainfall-Surface Water Response Analysis
 # All pipeline parameters live here. Nothing in pipeline/ should hardcode a tunable.
-# STATUS: aoi is a DRAFT candidate, not yet confirmed against a real tank count.
-# It requires Earth Engine access (JRC + Dynamic World) to validate >=300 candidate
-# tanks in-window. See CHECKPOINT 0 in README/status log before treating this as final.
+# STATUS: AOI CONFIRMED at CHECKPOINT 0 (480 candidate tanks at 3ha min, before the
+# max_area_ha/regulated_likely change below). See CLAUDE.md status log.
 
 earth_engine:
   project: "rainfall-tank-analysis"   # registered GCP project, EE API enabled + registered
@@ -10,9 +9,9 @@ earth_engine:
 aoi:
   name: "rayalaseema_anantapur_draft"
   description: >
-    Draft 2500-5000 km2 window in Anantapur district, Rayalaseema, Andhra Pradesh.
+    2500-5000 km2 window in Anantapur district, Rayalaseema, Andhra Pradesh.
     Rain-shadow region historically dense with small rain-fed irrigation tanks
-    (cheruvu/kere cascades). NOT Chennai. UNVALIDATED until Phase 0 step 3 runs.
+    (cheruvu/kere cascades). NOT Chennai. Confirmed at CHECKPOINT 0.
   bbox:  # [min_lon, min_lat, max_lon, max_lat], EPSG:4326
     min_lon: 77.20
     min_lat: 14.10
@@ -27,16 +26,23 @@ period:
 
 tank_filter:
   min_area_ha: 3
-  max_area_ha: 500
+  max_area_ha: 150          # changed post-CHECKPOINT-0 (was 500) per user directive
+  regulated_likely_min_area_ha: 100   # flag only, not dropped; excluded from headline stats
   sensitivity_min_area_ha: [1, 5]   # report sensitivity at these alternates
   elongation_index_max: 3.0          # above this => flag as river/canal, drop
   min_valid_seasons_to_rank: 5       # tanks with fewer seasons are marked, not ranked
+  slope_outlier_max_deg: 10   # mean-slope-over-polygon above this => inventory QC flag, not silently dropped
 
 sentinel1:
   instrument_mode: "IW"
   polarization: "VV"
-  orbit_pass: null   # TBD Phase 0/1: choose pass (ASCENDING/DESCENDING) with more AOI coverage
+  # Confirmed at Phase 1 kickoff: AOI is covered by exactly ONE relative orbit,
+  # no per-tank orbit selection needed. 303 IW+VV images 2017-01..2026-08.
+  relative_orbit_number: 165
+  orbit_pass: "DESCENDING"
   revisit_days_nominal: 12
+  s1b_robustness_run: "skipped"   # see README: per-year counts flat enough (28-37/yr) that
+                                   # subsampling to S1A-only cadence wasn't judged necessary
   speckle_filter_radius_m: 30
   threshold_db:
     start: -16
@@ -59,6 +65,12 @@ rainfall:
   baseline_spi_start: "1981-01-01"
   baseline_spi_end: "2020-12-31"
   monsoon_start_month: 6   # June 1 onward
+  season_start_month_day: [6, 1]    # Jun 1
+  season_end_month_day: [12, 31]    # Dec 31
+  hydrological_year_start_month: 6  # Jun-May water year
+  fit_years: [2017, 2025]           # 9 complete hydrological seasons used for model fitting
+  out_of_sample_nowcast_year: 2026  # 2026 is nowcast-only, never used to fit or validate H1/H2/H3
+  provisional_last_n_months: 2      # CHIRPS publication lag - flag last 2 months as provisional
 
 stats:
   lag_months_range: [-4, 6]
@@ -83,6 +95,17 @@ validation:
   gww_archive_repo: "https://github.com/jaapschellekens/GWW_archive"
   jrc_monthly_history_end: "2021-12-31"
   jrc_monthly_history_2022_2024_asset: "projects/JRC/GSW1_5/MonthlyHistory_2022_2024"
+
+osm:
+  overpass_url: "https://overpass-api.de/api/interpreter"
+  water_union_added: null    # set true/false once 02_tank_inventory.py attempts this
+  canal_buffer_m: 300        # non_rain_inflow flag: tank within this distance of an OSM canal/channel
+
+non_rain_inflow:
+  canal_buffer_m: 300
+  # second condition (area gains Jan-May without antecedent rain) needs Phase 1+2
+  # output; flag is finalized in Phase 3, partial (canal-proximity only) in Phase 0/1.
+  jan_may_gain_threshold_pct_of_max: 10   # area gain > this % of max with ~0 antecedent rain -> flag
 
 seeds:
   numpy_seed: 42

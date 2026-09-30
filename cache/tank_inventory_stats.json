@@ -1,11 +1,19 @@
 {
-  "n_raw_candidates": 1600,
-  "n_after_area_filter": 522,
+  "n_raw_candidates": 1606,
+  "n_after_area_filter": 512,
   "n_dropped_as_elongated_river_canal": 42,
-  "n_final": 480,
+  "n_final": 470,
+  "n_regulated_likely_flagged": 8,
   "sensitivity_by_min_area_ha": {
-    "min_area_ha=1": 1378,
-    "min_area_ha=5": 307,
-    "min_area_ha=3": 480
-  }
+    "min_area_ha=1": 1369,
+    "min_area_ha=5": 297,
+    "min_area_ha=3": 470
+  },
+  "water_mask_method": "max_extent",
+  "n_osm_water_polygons_fetched": 144,
+  "n_osm_only_candidates_added": 6,
+  "n_osm_canal_lines_fetched": 59,
+  "n_slope_outlier_flagged": 11,
+  "n_near_osm_canal_flagged": 10,
+  "n_distinct_chirps_pixels": 116
 }
