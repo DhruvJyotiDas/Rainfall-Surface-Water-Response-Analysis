@@ -5,9 +5,11 @@ venv/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-cache/*.parquet
-cache/*.csv
 cache/**/*.tif
+# Note: cache/*.csv and cache/*.parquet are intentionally NOT ignored -
+# they're small structured pipeline outputs (thresholds, per-year water
+# area, stats), not raw imagery, and are committed as reproducibility
+# evidence per the project's "never fabricate numbers" rule.
 .env
 *.log
 .ipynb_checkpoints/
