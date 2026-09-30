@@ -56,3 +56,14 @@ explicitly not Chennai. Tank count >= 300 is UNVERIFIED — needs EE access
   Blocked on EE auth (hard stop per spec) and GitHub repo creation (no gh CLI).
   Reported to user, awaiting decisions before continuing to asset verification
   and tank inventory.
+- 2026-09-30: Decisions received —
+  (1) EE auth: user will run `earthengine authenticate` themselves and report
+      back when done (+ GCP project ID if one is required). Do not retry
+      ee.Initialize() in a loop; wait for explicit confirmation.
+  (2) GitHub repo: user will create an empty public repo on github.com and
+      hand over the URL; I add it as `origin` and push (no gh CLI needed for
+      this path — plain git push works fine once a remote exists).
+  (3) Python: staying on the machine default (3.14.x), no separate venv pin.
+      requirements.txt versions already match what's installed under 3.14.
+  Currently idle on both EE and GitHub blockers — nothing to do until user
+  returns with EE confirmation and/or the repo URL.
