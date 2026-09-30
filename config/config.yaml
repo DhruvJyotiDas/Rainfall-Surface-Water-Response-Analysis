@@ -1,0 +1,90 @@
+# GEOIMPATHON 1.0 - Problem 2.4: Rainfall-Surface Water Response Analysis
+# All pipeline parameters live here. Nothing in pipeline/ should hardcode a tunable.
+# STATUS: aoi is a DRAFT candidate, not yet confirmed against a real tank count.
+# It requires Earth Engine access (JRC + Dynamic World) to validate >=300 candidate
+# tanks in-window. See CHECKPOINT 0 in README/status log before treating this as final.
+
+aoi:
+  name: "rayalaseema_anantapur_draft"
+  description: >
+    Draft 2500-5000 km2 window in Anantapur district, Rayalaseema, Andhra Pradesh.
+    Rain-shadow region historically dense with small rain-fed irrigation tanks
+    (cheruvu/kere cascades). NOT Chennai. UNVALIDATED until Phase 0 step 3 runs.
+  bbox:  # [min_lon, min_lat, max_lon, max_lat], EPSG:4326
+    min_lon: 77.20
+    min_lat: 14.10
+    max_lon: 77.80
+    max_lat: 14.60
+  approx_area_km2: 3550
+  min_candidate_tanks_required: 300
+
+period:
+  start: "2017-01-01"
+  end: "2026-08-31"  # last complete month before today (2026-09-30); revalidate at run time
+
+tank_filter:
+  min_area_ha: 3
+  max_area_ha: 500
+  sensitivity_min_area_ha: [1, 5]   # report sensitivity at these alternates
+  elongation_index_max: 3.0          # above this => flag as river/canal, drop
+  min_valid_seasons_to_rank: 5       # tanks with fewer seasons are marked, not ranked
+
+sentinel1:
+  instrument_mode: "IW"
+  polarization: "VV"
+  orbit_pass: null   # TBD Phase 0/1: choose pass (ASCENDING/DESCENDING) with more AOI coverage
+  revisit_days_nominal: 12
+  speckle_filter_radius_m: 30
+  threshold_db:
+    start: -16
+    sweep: [-19, -18, -17, -16, -15, -14]
+  otsu:
+    bimodality_min_variance_ratio: 0.6   # fallback to global threshold below this
+  slope_mask_deg: 15   # mask pixels steeper than this before water classification
+
+sentinel2:
+  collection: "COPERNICUS/S2_SR_HARMONIZED"
+  max_cloud_fraction: 0.10
+  match_window_days: 3   # +/- days around S1 pass for calibration pairs
+
+calibration:
+  min_pairs_for_per_tank_fit: 8   # else fall back to global ratio by size class
+  size_classes_ha: [3, 10, 30, 100, 500]
+
+rainfall:
+  source: "UCSB-CHG/CHIRPS/DAILY"
+  baseline_spi_start: "1981-01-01"
+  baseline_spi_end: "2020-12-31"
+  monsoon_start_month: 6   # June 1 onward
+
+stats:
+  lag_months_range: [-4, 6]
+  lag_peak_search_range: [0, 4]
+  bootstrap_block_months: 6
+  bootstrap_n_iter: 1000
+  ar_order_prewhiten: 1
+  significance_alpha: 0.05
+  fill_threshold_pct_of_max: 50   # peak >= this % of robust max => "filled" that season
+  recession_floor_pct_of_max: 20
+  deficit_scenario_sd: -1.0   # seasonal rainfall = mean - 1 SD
+
+classification:
+  # thresholds are illustrative starting points; recalibrate once Phase 3 runs
+  resilient_min_fill_frequency: 0.8
+  resilient_max_recession_k_per_month: 0.15
+  fragile_max_fill_frequency: 0.5
+  nonresponsive_max_fill_frequency: 0.2
+  gmm_n_components: 4   # sensitivity check only, not the primary classifier
+
+validation:
+  gww_archive_repo: "https://github.com/jaapschellekens/GWW_archive"
+  jrc_monthly_history_end: "2021-12-31"
+  jrc_monthly_history_2022_2024_asset: "projects/JRC/GSW1_5/MonthlyHistory_2022_2024"
+
+seeds:
+  numpy_seed: 42
+  bootstrap_seed: 42
+
+dashboard:
+  max_payload_mb: 15
+  geometry_coordinate_precision: 5   # decimal places when simplifying/rounding

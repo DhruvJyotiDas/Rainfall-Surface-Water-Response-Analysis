@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+cache/*.parquet
+cache/*.csv
+cache/**/*.tif
+.env
+*.log
+.ipynb_checkpoints/
