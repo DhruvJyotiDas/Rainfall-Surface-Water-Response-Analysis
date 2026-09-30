@@ -13,3 +13,8 @@ cache/**/*.tif
 .env
 *.log
 .ipynb_checkpoints/
+node_modules/
+test-results/
+playwright-report/
+.vite/
+.npm-cache/

@@ -1,0 +1,17 @@
+{
+  "H1_frac_significant_lag_0_2": 0.15584415584415584,
+  "H1_n_testable": 462,
+  "H2_frac_hinge_wins": 0.19361702127659575,
+  "H2_n_eligible": 470,
+  "H3_placebo": {
+    "n_tests": 60,
+    "n_significant": 14,
+    "false_positive_rate": 0.23333333333333334
+  },
+  "classification_counts": {
+    "threshold_limited_fragile": 284,
+    "rainfall_tracking": 122,
+    "non_responsive": 59,
+    "resilient": 5
+  }
+}
