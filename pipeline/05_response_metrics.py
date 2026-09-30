@@ -189,7 +189,8 @@ def classify(fill_freq, recession_k, cfg) -> str:
     c = cfg["classification"]
     if fill_freq is None:
         return "insufficient_data"
-    if fill_freq >= c["resilient_min_fill_frequency"] and (recession_k or 1) <= c["resilient_max_recession_k_per_month"]:
+    k_eff = recession_k if recession_k is not None else 1.0  # missing -> assume fast (not resilient), but don't let real 0.0 fall through `or`
+    if fill_freq >= c["resilient_min_fill_frequency"] and k_eff <= c["resilient_max_recession_k_per_month"]:
         return "resilient"
     if fill_freq <= c["nonresponsive_max_fill_frequency"]:
         return "non_responsive"
