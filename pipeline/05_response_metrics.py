@@ -157,12 +157,16 @@ def seasonal_threshold_model(sub: pd.DataFrame, robust_max: float, cfg) -> dict:
 
 
 def recession_rate(sub: pd.DataFrame) -> float | None:
-    """log-linear fit from the annual peak month to the annual minimum month
-    (whichever comes later in the same hydrological year) - simplified to a
-    single global estimate across all peak->min transitions for the tank.
+    """log-linear fit from the peak month to the tail of the SAME
+    hydrological year (Jun-May, not calendar Jan-Dec) - recession runs from
+    an Oct-Dec peak into the following Jan-May, so grouping by calendar year
+    alone would cut the tail off after just 1-2 months for most tanks. Caught
+    while reviewing this function before trusting its output.
     """
+    sub = sub.copy()
+    sub["hydro_year"] = np.where(sub["month_num"] >= 6, sub["year"], sub["year"] - 1)
     slopes = []
-    for yr, grp in sub.groupby("year"):
+    for _hy, grp in sub.groupby("hydro_year"):
         grp = grp.sort_values("date")
         if len(grp) < 4:
             continue
