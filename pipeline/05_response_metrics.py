@@ -216,12 +216,24 @@ def placebo_test(merged: pd.DataFrame, n_shuffles: int = 50, seed: int = 42) -> 
         sub = merged[merged["tank_id"] == tid].sort_values("date").reset_index(drop=True)
         if len(sub) < 24:
             continue
+        # BUG CAUGHT (before trusting a suspicious 25% false-positive rate):
+        # this used to overwrite `precip_mm`, but tank_lag_correlation() reads
+        # `rainfall_anomaly_z` - the shuffle had literally zero effect and was
+        # just re-measuring the real correlation each "shuffle". Fixed: build
+        # a month_num -> year lookup so the same calendar month's anomaly
+        # value from the shuffled-partner year is substituted in, keeping
+        # both rainfall columns consistent.
+        by_month_year = sub.drop_duplicates(["month_num", "year"]).set_index(["month_num", "year"])[["rainfall_anomaly_z", "precip_mm"]]
         for _ in range(n_shuffles // len(sample_tanks) + 1):
             years = sub["year"].unique()
             shuffled_years = rng.permutation(years)
             year_map = dict(zip(years, shuffled_years, strict=False))
             shuffled = sub.copy()
-            shuffled["precip_mm"] = shuffled["year"].map(lambda y: sub.loc[sub["year"] == year_map[y], "precip_mm"].mean())  # noqa: B023 - eager .map() call, consumed same iteration
+
+            src_keys = list(zip(shuffled["month_num"], shuffled["year"].map(year_map), strict=False))
+            looked_up = by_month_year.reindex(src_keys)
+            shuffled["rainfall_anomaly_z"] = looked_up["rainfall_anomaly_z"].to_numpy()
+            shuffled["precip_mm"] = looked_up["precip_mm"].to_numpy()
             result = tank_lag_correlation(shuffled)
             if result["peak_p"] is not None:
                 n_total += 1

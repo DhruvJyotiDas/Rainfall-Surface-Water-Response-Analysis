@@ -76,22 +76,57 @@ dense cascade of small irrigation tanks. Bbox lon[77.20,77.80] lat[14.10,14.60],
   `classification.*` thresholds) — resilient / rainfall_tracking /
   threshold_limited_fragile / non_responsive / insufficient_data (<5 seasons).
 
-## Hypothesis results (H1/H2/H3)
+## Hypothesis results (H1/H2/H3) — actual run, `cache/phase3_hypothesis_results.json`
 
-*(numbers filled in from `cache/phase3_hypothesis_results.json` — see that
-file for the exact figures from the actual run)*
+- **H1 FAILS**: only **72/462 tanks (15.6%)** show a significant positive
+  response at lag 0-2 months — well short of the ≥50% pre-registered
+  threshold. **Per the pre-registration, we pivot the narrative**: rainfall
+  alone does not explain most tanks' area response at the monthly
+  granularity this build could achieve — consistent with cascade effects
+  (basins average ~19 other tanks upstream/downstream, `n_other_tanks_in_basin`)
+  and/or management (releases, encroachment) confounding a pure
+  rainfall-response signal. **Caveat**: p-values are naive per-tank Pearson
+  tests, not corrected for CHIRPS pixel pseudo-replication (116 pixels
+  shared by 470 tanks), and the peak lag was selected from 5 candidates
+  (0-4 months) without multiple-comparison correction — see H3 below, which
+  shows this selection alone inflates apparent significance well above 5%.
+  The true rate of real rainfall response is probably lower than 15.6%, not
+  higher, once corrected.
+- **H2 FAILS**: hinge beats linear by AIC in only **91/470 tanks (19.4%)** —
+  the opposite of the pre-registered expectation. Most likely explanation
+  given the time-boxed method: only 9 seasons/tank at monthly (not daily)
+  granularity is a very weak basis for distinguishing a 3-parameter hinge
+  from a 2-parameter line — this result should be read as "inconclusive
+  given the data density achieved," not as strong evidence against a hinge
+  mechanism.
+- **H3 investigated, not a clean pass**: placebo false-positive rate =
+  **23.3%** (50 shuffles, 60-tank subsample) — far above the nominal 5%.
+  We caught and fixed one real bug here (the shuffle initially overwrote the
+  wrong column and had zero effect — see CLAUDE.md), but after fixing it the
+  rate stayed elevated. **This number matches `1-(0.95)^5 ≈ 22.6%` almost
+  exactly** — the expected inflation from picking the single best-correlated
+  lag out of 5 candidates (0-4 months) without a Bonferroni-style correction.
+  This is a real, explained methodological limitation of this time-boxed
+  build (not a residual pipeline bug we ran out of time to find): both H1
+  and the real (non-placebo) lag test share this same peak-picking bias, so
+  H1's 15.6% figure is itself somewhat inflated versus a properly corrected
+  test. A corrected re-run (pre-registering a single lag, or dividing alpha
+  by the number of lags tested) is the clear next step, not done here.
 
-- **H1** (≥50% of tanks show significant positive lag 0-2 response): see
-  `phase3_hypothesis_results.json` → `H1_frac_significant_lag_0_2`.
-  **Caveat**: p-values are naive per-tank Pearson tests, NOT corrected for
-  the CHIRPS pixel pseudo-replication (116 pixels shared by 470 tanks) — a
-  real limitation of this time-boxed build, not swept under the rug.
-- **H2** (hinge beats linear by AIC in most tanks): see `H2_frac_hinge_wins`.
-  Fit on only 9 seasons/tank at monthly granularity — expect noise.
-- **H3** (placebo/permutation shows no false signal): reduced to 50 shuffles
-  on a 60-tank subsample (spec default: 1000, all tanks) — see
-  `H3_placebo.false_positive_rate`. Directionally informative, not a precise
-  estimate.
+## Classification counts (470 tanks)
+
+| Class | Count | Note |
+|---|---|---|
+| threshold_limited_fragile | 284 | needs high rainfall, fails to fill in many seasons |
+| rainfall_tracking | 122 | fills roughly in proportion to rainfall |
+| non_responsive | 59 | rarely fills regardless of rainfall — candidates for siltation/diversion/encroachment survey (Problem 2.2) |
+| resilient | 5 | high fill frequency, slow recession |
+
+Given H1/H2 both failed their pre-registered thresholds, these class labels
+should be read as descriptive groupings of *observed behavior* (how often a
+tank actually filled, how fast it drained), not as validated causal
+categories — the rainfall-response mechanism behind them is exactly what H1
+says we could not confirm cleanly in this build.
 
 ## Limitations (mandatory, honest)
 
