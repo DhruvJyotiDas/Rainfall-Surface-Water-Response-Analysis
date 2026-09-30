@@ -296,6 +296,11 @@ def main() -> int:
     n_zero_dropped = monthly.attrs.get("n_zero_obs_months_dropped", 0)
     print(f"Months with n_obs=0 dropped (never interpolated): {n_zero_dropped}")
 
+    print("=== S1-vs-S2 calibration ===")
+    pairs = run_s1_s2_calibration(ee, gdf_with_thresh, aoi_geom, full, cfg)
+    validation_table = build_validation_table(pairs, full, gdf_with_thresh, cfg)
+    print(validation_table.to_string(index=False))
+
     return 0
 
 
@@ -327,6 +332,135 @@ def aggregate_monthly(raw: pd.DataFrame, cfg: dict, scale_m: int = 20) -> pd.Dat
     full_grid_size = len(all_tanks) * len(all_months)
     monthly.attrs["n_zero_obs_months_dropped"] = full_grid_size - len(monthly)
     return monthly
+
+
+def select_calibration_anchor_dates(raw_s1: pd.DataFrame, max_dates: int = 100) -> list:
+    """Sample S1 dates for S2 calibration rather than checking all ~300 -
+    bounds GEE cost while still spanning the full record (evenly spaced, not
+    just the first N) for wet/dry season diversity.
+    """
+    dates = sorted(raw_s1["date_ms"].unique())
+    if len(dates) <= max_dates:
+        return dates
+    step = len(dates) / max_dates
+    idx = sorted({int(i * step) for i in range(max_dates)})
+    return [dates[i] for i in idx]
+
+
+def run_s1_s2_calibration(ee, gdf: gpd.GeoDataFrame, aoi_geom, raw_s1: pd.DataFrame, cfg) -> pd.DataFrame:
+    """Per-tank S1 calibration against S2 MNDWI on cloud-free dates near an S1
+    pass. For each sampled anchor date: median-composite S2 within +/-
+    match_window_days, compute MNDWI water mask (B3/B11, threshold 0) and an
+    SCL-based cloud mask in ONE 2-band image, batched the same way as the S1
+    extraction (10 dates/request - same quota wall applies). Cloud fraction
+    is derived from the known tank area_ha (pixel count at scale=20) rather
+    than a second reduceRegions call.
+    """
+    pairs_path = cache_path("s1_s2_calibration_pairs", "csv")
+    if pairs_path.exists():
+        print(f"[cache] using existing {pairs_path}")
+        return pd.read_csv(pairs_path)
+
+    s2cfg = cfg["sentinel2"]
+    window_days = s2cfg["match_window_days"]
+    scale = 20
+    px_area_ha = (scale**2) / 10000.0
+
+    feats = [
+        ee.Feature(
+            ee.Geometry(json.loads(gpd.GeoSeries([row.geometry]).to_json())["features"][0]["geometry"]),
+            {"tank_id": row["tank_id"], "area_ha": float(row["area_ha"])},
+        )
+        for _, row in gdf.iterrows()
+    ]
+    fc = ee.FeatureCollection(feats)
+
+    anchor_dates = select_calibration_anchor_dates(raw_s1, max_dates=100)
+    print(f"S2 calibration: sampling {len(anchor_dates)} anchor dates from {raw_s1['date_ms'].nunique()} total S1 dates.")
+
+    def process_date(date_ms):
+        date_ms = ee.Number(date_ms)
+        center = ee.Date(date_ms)
+        start = center.advance(-window_days, "day")
+        end = center.advance(window_days + 1, "day")
+        s2 = ee.ImageCollection(s2cfg["collection"]).filterBounds(aoi_geom).filterDate(start, end)
+        composite = s2.median()
+        mndwi = composite.normalizedDifference(["B3", "B11"]).rename("MNDWI")
+        scl = composite.select("SCL")
+        cloud_mask = scl.eq(3).Or(scl.eq(8)).Or(scl.eq(9)).Or(scl.eq(10))
+        water = mndwi.gt(0).And(cloud_mask.Not()).rename("water")
+        combo = water.addBands(cloud_mask.rename("cloud"))
+        reduced = combo.reduceRegions(collection=fc, reducer=ee.Reducer.sum(), scale=scale, tileScale=4)
+        return reduced.map(lambda f: f.set("date_ms", date_ms).set("n_s2_images", s2.size()))
+
+    rows = []
+    n_batches = (len(anchor_dates) + AGGREGATION_BATCH_SIZE - 1) // AGGREGATION_BATCH_SIZE
+    for b in range(n_batches):
+        batch = anchor_dates[b * AGGREGATION_BATCH_SIZE : (b + 1) * AGGREGATION_BATCH_SIZE]
+
+        def fetch_batch(batch=batch):
+            subset = ee.List(batch).map(process_date)
+            return ee.FeatureCollection(subset).flatten().getInfo()
+
+        result = retry_with_backoff(fetch_batch, label=f"S2 calib batch {b + 1}/{n_batches}", max_retries=5, base_delay=8.0)
+        for f in result["features"]:
+            p = f["properties"]
+            rows.append(
+                {
+                    "tank_id": p["tank_id"],
+                    "date_ms": p["date_ms"],
+                    "n_s2_images": p.get("n_s2_images", 0),
+                    "water_px": p.get("water", 0.0),
+                    "cloud_px": p.get("cloud", 0.0),
+                    "area_ha": p["area_ha"],
+                }
+            )
+        print(f"S2 calib batch {b + 1}/{n_batches} done ({len(result['features'])} rows)")
+
+    df = pd.DataFrame(rows)
+    df["total_px_est"] = df["area_ha"] / px_area_ha
+    df["cloud_frac"] = (df["cloud_px"] / df["total_px_est"]).clip(0, 1)
+    df["s2_area_ha"] = df["water_px"] * px_area_ha
+    df = df[df["n_s2_images"] > 0].copy()
+    df = df[df["cloud_frac"] < s2cfg["max_cloud_fraction"]].copy()
+
+    df.to_csv(pairs_path, index=False)
+    print(f"[cache] wrote {pairs_path} ({len(df)} cloud-free tank-date pairs)")
+    return df
+
+
+def build_validation_table(pairs: pd.DataFrame, raw_s1: pd.DataFrame, gdf: gpd.GeoDataFrame, cfg, scale_m: int = 20) -> pd.DataFrame:
+    """Join S2 pairs to the S1 area on the SAME date, fit per-tank or
+    per-size-class ratio, report R2/MAPE/bias by size class - the exact
+    CHECKPOINT 1 deliverable.
+    """
+    s1 = raw_s1.copy()
+    s1["s1_area_ha"] = s1["sum"] * (scale_m**2) / 10000.0
+    merged = pairs.merge(s1[["tank_id", "date_ms", "s1_area_ha"]], on=["tank_id", "date_ms"], how="inner")
+    merged = merged[(merged["s1_area_ha"] >= 0) & (merged["s2_area_ha"] >= 0)].copy()
+
+    size_classes = cfg["calibration"]["size_classes_ha"]
+    area_map = gdf.set_index("tank_id")["area_ha"].to_dict()
+    merged["tank_area_ha"] = merged["tank_id"].map(area_map)
+    merged["size_class"] = pd.cut(merged["tank_area_ha"], bins=[0] + size_classes + [np.inf], right=False)
+
+    rows = []
+    for cls, grp in merged.groupby("size_class", observed=True):
+        if len(grp) < 3:
+            rows.append({"size_class": str(cls), "n_pairs": len(grp), "r2": None, "mape": None, "bias_ha": None})
+            continue
+        x, y = grp["s1_area_ha"].to_numpy(), grp["s2_area_ha"].to_numpy()
+        ss_res = np.sum((y - x) ** 2)
+        ss_tot = np.sum((y - y.mean()) ** 2)
+        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else None
+        nonzero = x > 0.01
+        mape = float(np.mean(np.abs((y[nonzero] - x[nonzero]) / x[nonzero])) * 100) if nonzero.sum() > 0 else None
+        bias = float((y - x).mean())
+        rows.append({"size_class": str(cls), "n_pairs": len(grp), "r2": r2, "mape_pct": mape, "bias_ha": bias})
+
+    table = pd.DataFrame(rows)
+    write_json_cache("s1_vs_s2_validation_table", table.to_dict(orient="records"))
+    return table
 
 
 if __name__ == "__main__":
