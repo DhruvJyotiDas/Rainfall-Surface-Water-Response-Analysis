@@ -1,0 +1,11 @@
+{
+  "n_raw_candidates": 1600,
+  "n_after_area_filter": 522,
+  "n_dropped_as_elongated_river_canal": 42,
+  "n_final": 480,
+  "sensitivity_by_min_area_ha": {
+    "min_area_ha=1": 1378,
+    "min_area_ha=5": 307,
+    "min_area_ha=3": 480
+  }
+}
